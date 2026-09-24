@@ -1,5 +1,8 @@
+#include <Wire.h>
 #include <Servo.h>
 #include "HX711.h"
+#include <Adafruit_Sensor.h>
+#include <Adafruit_ADXL345_U.h>
 
 // Editable variables
 // Calibration factor = Raw Value / Known Weight
@@ -17,14 +20,25 @@ const float vccVoltage = 5.0;
 
 HX711 scale;  // create the load cell object
 Servo ESC;    // create servo object to control the ESC
-
+Adafruit_ADXL345_Unified accelerometer = Adafruit_ADXL345_Unified(12345);
 // preload the functions here
 float readLoadCellAverage(HX711 &scale, unsigned long duration);
 
 void thrustTest(int iterations = 10,unsigned long collectionTime = 5000,float bottomRange = 0,float topRange = 100);
 
 void setup() {
+Wire.setSDA(4);
+Wire.setSCL(5);
+Wire.begin();
 
+if (!accelerometer.begin()) {
+  Serial.println("ADXL345 not detected!");
+  while (1) delay(100);
+}
+
+accelerometer.setRange(ADXL345_RANGE_16_G);
+accelerometer.setDataRate(ADXL345_DATARATE_100_HZ);
+  
   Serial.begin(115200);
   while (!Serial) {
     delay(10);
@@ -46,7 +60,43 @@ void setup() {
 void loop() {
   // everything runs in setup()
 }
+bool readAccelerometerAverage(
+  unsigned long duration,
+  float &averageX,
+  float &averageY,
+  float &averageZ) {
 
+  float sumX = 0.0;
+  float sumY = 0.0;
+  float sumZ = 0.0;
+  unsigned long sampleCount = 0;
+
+  unsigned long startTime = millis();
+
+  while (millis() - startTime < duration) {
+    sensors_event_t event;
+    accelerometer.getEvent(&event);
+
+    sumX += event.acceleration.x;
+    sumY += event.acceleration.y;
+    sumZ += event.acceleration.z;
+    sampleCount++;
+
+    delay(2);
+  }
+
+  if (sampleCount == 0) {
+    averageX = 0.0;
+    averageY = 0.0;
+    averageZ = 0.0;
+    return false;
+  }
+
+  averageX = sumX / sampleCount;
+  averageY = sumY / sampleCount;
+  averageZ = sumZ / sampleCount;
+  return true;
+}
 
 void thrustTest(
   int iterations,
@@ -73,8 +123,39 @@ void thrustTest(
     // Collect thrust data
     float thrust = 0; //readLoadCellAverage(scale, collectionTime);
 
-    // Replace with current sensor reading
-    int rawADC = analogRead(sensorIn); // Reads a value from 0 to 1023
+    // inside thrustTest(), inside the for-loop, after delay(stabilizationTime);
+
+float accelerationX;
+float accelerationY;
+float accelerationZ;
+
+bool accelOK = readAccelerometerAverage(
+  collectionTime,
+  accelerationX,
+  accelerationY,
+  accelerationZ
+);
+
+if (accelOK) {
+  float axG = accelerationX / 9.80665;
+  float ayG = accelerationY / 9.80665;
+  float azG = accelerationZ / 9.80665;
+
+  Serial.print(throttle, 2);
+  Serial.print(",");
+  Serial.print(thrust, 4);
+  Serial.print(",");
+  Serial.print(axG, 4);
+  Serial.print(",");
+  Serial.print(ayG, 4);
+  Serial.print(",");
+  Serial.println(azG, 4);
+} else {
+  Serial.print(throttle, 2);
+  Serial.print(",");
+  Serial.print(thrust, 4);
+  Serial.println(",ERROR");
+}
   
     // 1. Convert the raw ADC reading into actual volts output by the sensor
     float sensorVoltage = (rawADC / 1023.0) * vccVoltage;
