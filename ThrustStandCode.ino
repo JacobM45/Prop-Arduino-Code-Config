@@ -41,7 +41,6 @@ bool readAccelerometerAverage(unsigned long duration, float &averageX, float &av
 void thrustTest(int iterations = 10, unsigned long collectionTime = 5000, float bottomRange = 0, float topRange = 100);
 
 void setup() {
-  void setup() {
   Serial.begin(115200);
   while (!Serial) {
     delay(10);
