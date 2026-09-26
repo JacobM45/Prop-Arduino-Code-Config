@@ -41,14 +41,13 @@ bool readAccelerometerAverage(unsigned long duration, float &averageX, float &av
 void thrustTest(int iterations = 10, unsigned long collectionTime = 5000, float bottomRange = 0, float topRange = 100);
 
 void setup() {
-  Wire.setSDA(4);
-  Wire.setSCL(5);
-  Wire.begin();
-
+  void setup() {
   Serial.begin(115200);
   while (!Serial) {
     delay(10);
   }
+
+  Wire.begin();   // default Pico I2C pins: SDA=GP0, SCL=GP1
 
   if (!accelerometer.begin()) {
     Serial.println("ADXL345 not detected!");
@@ -64,15 +63,7 @@ void setup() {
   ESC.attach(9, 1000, 2000);
   ESC.writeMicroseconds(1000);
 
-  Serial.println("RPM sensor enabled.");
-  Serial.println("Testing tips:");
-  Serial.println("1. Start with pulsesPerRevolution = 1.");
-  Serial.println("2. If sensor only sees blade passes, use the blade count.");
-  Serial.println("3. Try FALLING first, then RISING if no pulses register.");
-  Serial.println("4. Keep the sensor close to the reflector/prop path.");
-
   delay(2000);
-
   thrustTest(iterations, collectionTime, bottomRange, topRange);
 }
 
