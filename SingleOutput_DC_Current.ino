@@ -1,23 +1,35 @@
 #include <WinsonLib.h>
 
-// Setting Analog Pin & Sensitivity(mV/A)
-WCS  WCS1 = WCS( 0, _WCS1700);
+WCS WCS1 = WCS(0, _WCS1600);
 
 double data = 0;
 
+const int MAX_READINGS = 1000;
+const int DURATION = 90000; //milliseconds
+int initialTime = millis();
+int time;
+
+float currentData[MAX_READINGS]; 
+int listSize = 0; 
+
 void setup() {
   Serial.begin(9600);
-
   // Power-on Reset
   Serial.println("Reset");
   WCS1.Reset(); 
 }
 
 void loop() {
-  // Measure DC Current
   data = WCS1.A_DC();
-  Serial.print("Current(A) : ");
-  Serial.println(String(data,3) + " A");
+  time = millis() - initialTime;
   
-  delay(500);
+  if (time < DURATION) {
+    currentData[listSize] = (float)data;
+    listSize++;                
+  }
+
+  Serial.print("Current: ");
+  Serial.println(String(data, 3) + " A");
+
+  delay(DURATION/MAX_READINGS);
 }
