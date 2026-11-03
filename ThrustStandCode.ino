@@ -1,8 +1,6 @@
-#include <Wire.h>
 #include <Servo.h>
+#include <WinsonLib.h>
 #include "HX711.h"
-#include <Adafruit_Sensor.h>
-#include <Adafruit_ADXL345_U.h>
 
 // Editable variables
 // Calibration factor = Raw Value / Known Weight
@@ -20,83 +18,43 @@ const float vccVoltage = 5.0;
 
 HX711 scale;  // create the load cell object
 Servo ESC;    // create servo object to control the ESC
-Adafruit_ADXL345_Unified accelerometer = Adafruit_ADXL345_Unified(12345);
+WCS WCS1 = WCS(0, _WCS1600); // create the current sensor
+
 // preload the functions here
-float readLoadCellAverage(HX711 &scale, unsigned long duration);
+struct SensorData {
+    float averageThrust;
+    float averageCurrent;
+};
+
+SensorData averageData(HX711 &scale, WCS WCS1, unsigned long duration);
 
 void thrustTest(int iterations = 10,unsigned long collectionTime = 5000,float bottomRange = 0,float topRange = 100);
 
-void setup() {
-Wire.setSDA(4);
-Wire.setSCL(5);
-Wire.begin();
+void setup() { // OH YEAH SETUP TIME
 
-if (!accelerometer.begin()) {
-  Serial.println("ADXL345 not detected!");
-  while (1) delay(100);
-}
-
-accelerometer.setRange(ADXL345_RANGE_16_G);
-accelerometer.setDataRate(ADXL345_DATARATE_100_HZ);
-  
   Serial.begin(115200);
   while (!Serial) {
     delay(10);
   }
 
+  accelSetup(); //Setup the accelerometer
+
   ESC.attach(9, 1000, 2000);  // (pin, min pulse width, max pulse width)
   ESC.writeMicroseconds(1000);
 
-  //scale.begin(21, 20);  // pin 21 and 20
-  //scale.set_scale(calibrationFactor);
-  //scale.tare();
+  scale.begin(21, 20);  // pin 21 and 20
+  scale.set_scale(calibrationFactor);
+  scale.tare();
 
   delay(2000);
 
   thrustTest(iterations, collectionTime, bottomRange, topRange);  // Start the test!
 }
 
-
 void loop() {
   // everything runs in setup()
 }
-bool readAccelerometerAverage(
-  unsigned long duration,
-  float &averageX,
-  float &averageY,
-  float &averageZ) {
 
-  float sumX = 0.0;
-  float sumY = 0.0;
-  float sumZ = 0.0;
-  unsigned long sampleCount = 0;
-
-  unsigned long startTime = millis();
-
-  while (millis() - startTime < duration) {
-    sensors_event_t event;
-    accelerometer.getEvent(&event);
-
-    sumX += event.acceleration.x;
-    sumY += event.acceleration.y;
-    sumZ += event.acceleration.z;
-    sampleCount++;
-
-    delay(2);
-  }
-
-  if (sampleCount == 0) {
-    averageX = 0.0;
-    averageY = 0.0;
-    averageZ = 0.0;
-    return false;
-  }
-
-  averageX = sumX / sampleCount;
-  averageY = sumY / sampleCount;
-  averageZ = sumZ / sampleCount;
-  return true;
-}
 
 void thrustTest(
   int iterations,
@@ -121,58 +79,16 @@ void thrustTest(
     delay(stabilizationTime);
 
     // Collect thrust data
-    float thrust = 0; //readLoadCellAverage(scale, collectionTime);
+    SensorData vals = averageData(scale, WCS1, collectionTime);
 
-    // inside thrustTest(), inside the for-loop, after delay(stabilizationTime);
-
-float accelerationX;
-float accelerationY;
-float accelerationZ;
-
-bool accelOK = readAccelerometerAverage(
-  collectionTime,
-  accelerationX,
-  accelerationY,
-  accelerationZ
-);
-
-if (accelOK) {
-  float axG = accelerationX / 9.80665;
-  float ayG = accelerationY / 9.80665;
-  float azG = accelerationZ / 9.80665;
-
-  Serial.print(throttle, 2);
-  Serial.print(",");
-  Serial.print(thrust, 4);
-  Serial.print(",");
-  Serial.print(axG, 4);
-  Serial.print(",");
-  Serial.print(ayG, 4);
-  Serial.print(",");
-  Serial.println(azG, 4);
-} else {
-  Serial.print(throttle, 2);
-  Serial.print(",");
-  Serial.print(thrust, 4);
-  Serial.println(",ERROR");
-}
-  
-    // 1. Convert the raw ADC reading into actual volts output by the sensor
-    float sensorVoltage = (rawADC / 1023.0) * vccVoltage;
-  
-    // 2. Account for the zero-current baseline offset (usually VCC / 2, which is 2.5V)
-    float zeroCurrentOffset = vccVoltage / 2.0;
-    float netVoltage = sensorVoltage - zeroCurrentOffset;
-  
-    // 3. Convert the voltage into Amps (net voltage divided by sensitivity in Volts)
-    float amps = (netVoltage * 1000.0) / mVperAmp; 
+    int amps = WCS1.A_DC();
 
     // Print CSV data
     Serial.print(throttle, 2);
     Serial.print(",");
-    Serial.print(thrust, 4);
+    Serial.print(vals.averageThrust, 4);
     Serial.print(",");
-    Serial.println(amps, 3);
+    Serial.println(vals.averageCurrent, 3);
   }
 
   // Turn the motor off
@@ -181,28 +97,29 @@ if (accelOK) {
 }
 
 
-float readLoadCellAverage(HX711 &scale, unsigned long duration) {
-
-  float dataSum = 0.0;
+SensorData averageData(HX711 &scale, WCS WCS1, unsigned long duration) {
+  SensorData results;
+  float amps;
+  float thrustSum = 0.0;
+  float currentSum;
   unsigned long dataCount = 0;
-
   unsigned long startTime = millis();
+  float weightReading;
 
   while (millis() - startTime < duration) {
 
     // Check if the HX711 has a new reading ready
     if (scale.is_ready()) {
 
-      float weightReading = scale.get_units(1);
+      weightReading = scale.get_units(1);
+      amps = WCS1.A_DC();
 
-      dataSum += weightReading;
+      thrustSum += weightReading;
+      currentSum += amps;
       dataCount++;
     }
   }
-
-  if (dataCount == 0) {
-    return 0.0;
-  }
-
-  return dataSum / dataCount;
+  results.averageThrust = thrustSum / dataCount;
+  results.averageCurrent = currentSum / dataCount;
+  return results;
 }
