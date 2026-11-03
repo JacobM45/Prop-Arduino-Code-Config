@@ -23,9 +23,9 @@ void loop() {
   data = WCS1.A_DC();
   time = millis() - initialTime;
   
-  if (time < DURATION) {
+  if (time < DURATION && sizeof(currentData) / sizeof(currentData[0]) < MAX_READINGS) {
     currentData[listSize] = (float)data;
-    listSize++;                
+    listSize++;
   }
 
   Serial.print("Current: ");
